@@ -10,27 +10,82 @@ async function saveMessageToFirebase(userId, message) {
   try {
     await addDoc(collection(db, "users", userId, "messages"), message);
 
-    // Check if there are more than 54 messages and delete the oldest ones
+    // Check if there are more than 60 messages and delete the oldest ones
     const messagesRef = collection(db, "users", userId, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
     const querySnapshot = await getDocs(q);
 
-    if (querySnapshot.size > 54) {
-      const excessMessages = querySnapshot.size - 54;
+    if (querySnapshot.size > 60) {
+      const excessMessages = querySnapshot.size - 60;
       const batch = writeBatch(db);
       querySnapshot.docs.slice(0, excessMessages).forEach(doc => {
         batch.delete(doc.ref);
       });
       await batch.commit();
     }
+
+    // Check if the number of messages is a multiple of 6
+    if (querySnapshot.size % 6 === 0) {
+      const lastSixMessages = querySnapshot.docs.slice(-6).map(doc => doc.data());
+      const response = await analyzeMessagesWithOpenAI(lastSixMessages);
+      if (response) {
+        await saveAnalysisToFirebase(userId, response.analysis, lastSixMessages, response.embedding);
+      }
+    }
   } catch (error) {
     console.error("Error saving message to Firebase:", error);
   }
 }
 
+async function analyzeMessagesWithOpenAI(messages) {
+  try {
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      return {
+        analysis: data.analysis,
+        embedding: data.embedding
+      };
+    } else {
+      throw new Error(data.error || "Failed to analyze messages");
+    }
+  } catch (error) {
+    console.error("Error analyzing messages with OpenAI:", error);
+    return null;
+  }
+}
+
+async function saveAnalysisToFirebase(userId, analysis, analyzedMessages, embedding) {
+  try {
+    if (analysis) {
+      // Create a reference for a new analysis document
+      const analysisRef = await addDoc(collection(db, "users", userId, "analysis"), {
+        analysis,
+        messages: analyzedMessages,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Store the embedding with the full path reference
+      await addDoc(collection(db, "users", userId, "embeddings"), {
+        embedding,
+        analysisId: analysisRef.id,
+        analysisPath: `users/${userId}/analysis/${analysisRef.id}`, // Add full path
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (error) {
+    console.error("Error saving analysis to Firebase:", error);
+  }
+}
+
 async function loadMessagesFromFirebase(userId) {
   const messagesRef = collection(db, "users", userId, "messages");
-  const q = query(messagesRef, orderBy("timestamp", "desc"), limit(54));
+  const q = query(messagesRef, orderBy("timestamp", "desc"), limit(60));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => doc.data()).reverse();
 }
