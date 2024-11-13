@@ -165,6 +165,10 @@ export default function Chat() {
   const handleClearChat = async () => {
     if (!session) return;
 
+    // Show a confirmation dialog
+    const confirmed = window.confirm("Are you sure you want to clear the chat? This action cannot be undone.");
+    if (!confirmed) return;
+
     try {
       // Query to get all messages for the current user
       const messagesQuery = query(
@@ -172,7 +176,7 @@ export default function Chat() {
       );
 
       const querySnapshot = await getDocs(messagesQuery);
-      const batch = writeBatch(db); // Create a writeBatch instance
+      const batch = writeBatch(db);
 
       querySnapshot.forEach((doc) => {
         batch.delete(doc.ref);
