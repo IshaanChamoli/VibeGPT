@@ -10,13 +10,13 @@ async function saveMessageToFirebase(userId, message) {
   try {
     await addDoc(collection(db, "users", userId, "messages"), message);
 
-    // Check if there are more than 50 messages and delete the oldest ones
+    // Check if there are more than 54 messages and delete the oldest ones
     const messagesRef = collection(db, "users", userId, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
     const querySnapshot = await getDocs(q);
 
-    if (querySnapshot.size > 50) {
-      const excessMessages = querySnapshot.size - 50;
+    if (querySnapshot.size > 54) {
+      const excessMessages = querySnapshot.size - 54;
       const batch = writeBatch(db);
       querySnapshot.docs.slice(0, excessMessages).forEach(doc => {
         batch.delete(doc.ref);
@@ -30,7 +30,7 @@ async function saveMessageToFirebase(userId, message) {
 
 async function loadMessagesFromFirebase(userId) {
   const messagesRef = collection(db, "users", userId, "messages");
-  const q = query(messagesRef, orderBy("timestamp", "desc"), limit(50));
+  const q = query(messagesRef, orderBy("timestamp", "desc"), limit(54));
   const querySnapshot = await getDocs(q);
   return querySnapshot.docs.map(doc => doc.data()).reverse();
 }
@@ -68,8 +68,34 @@ export default function Chat() {
 
   useEffect(() => {
     if (session) {
-      loadMessagesFromFirebase(session.user.id).then((loadedMessages) => {
-        setMessages(loadedMessages); // Load messages without animation
+      loadMessagesFromFirebase(session.user.id).then(async (loadedMessages) => {
+        if (loadedMessages.length === 0) {
+          // Fetch the initial message from OpenAI
+          try {
+            const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ messages: [] }),
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+              const initialMessage = { 
+                role: "assistant", 
+                content: data.message,
+                timestamp: new Date().toISOString()
+              };
+              setMessages([initialMessage]);
+              saveMessageToFirebase(session.user.id, initialMessage);
+            } else {
+              throw new Error(data.error || "Failed to get initial message");
+            }
+          } catch (error) {
+            console.error("Error fetching initial message:", error);
+          }
+        } else {
+          setMessages(loadedMessages);
+        }
       });
     }
   }, [session]);
@@ -185,8 +211,26 @@ export default function Chat() {
       await batch.commit();
       console.log("Chat cleared from Firebase");
 
-      // Update the UI to reflect the cleared chat
-      setMessages([]);
+      // Fetch the initial message from OpenAI
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [] }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        const initialMessage = { 
+          role: "assistant", 
+          content: data.message,
+          timestamp: new Date().toISOString()
+        };
+        setMessages([initialMessage]);
+        saveMessageToFirebase(session.user.id, initialMessage);
+      } else {
+        throw new Error(data.error || "Failed to get initial message");
+      }
+
     } catch (error) {
       console.error("Error clearing chat:", error);
     }
