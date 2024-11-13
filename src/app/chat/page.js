@@ -4,7 +4,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // Ensure this import is correct
+import { db, updateUserMainEmbedding } from "@/lib/firebase"; // Ensure this import is correct
 
 async function saveMessageToFirebase(userId, message) {
   try {
@@ -74,9 +74,12 @@ async function saveAnalysisToFirebase(userId, analysis, analyzedMessages, embedd
       await addDoc(collection(db, "users", userId, "embeddings"), {
         embedding,
         analysisId: analysisRef.id,
-        analysisPath: `users/${userId}/analysis/${analysisRef.id}`, // Add full path
+        analysisPath: `users/${userId}/analysis/${analysisRef.id}`,
         timestamp: new Date().toISOString(),
       });
+
+      // Update the user's main embedding
+      await updateUserMainEmbedding(userId);
     }
   } catch (error) {
     console.error("Error saving analysis to Firebase:", error);

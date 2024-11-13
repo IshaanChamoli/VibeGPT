@@ -48,6 +48,22 @@ export default function Dashboard() {
     }
   };
 
+  const initializeAllEmbeddings = async () => {
+    try {
+      const response = await fetch('/api/initialize-embeddings', {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (data.success) {
+        console.log("Successfully initialized embeddings:", data.message);
+      } else {
+        console.error("Error initializing embeddings:", data.error);
+      }
+    } catch (error) {
+      console.error("Error calling initialization endpoint:", error);
+    }
+  };
+
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[--background]">
@@ -92,6 +108,12 @@ export default function Dashboard() {
                 className="px-4 py-2 bg-[--accent-purple] text-[--foreground] rounded-full hover:bg-[--accent-purple] transition duration-300 shadow-lg"
               >
                 Sign Out
+              </button>
+              <button
+                onClick={initializeAllEmbeddings}
+                className="px-4 py-2 bg-[--accent-green] text-[--foreground] rounded-full hover:bg-[--accent-green] transition duration-300 shadow-lg"
+              >
+                Initialize All Embeddings
               </button>
             </div>
           </div>

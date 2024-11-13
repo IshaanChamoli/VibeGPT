@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { doc, setDoc, getFirestore } from 'firebase/firestore';
+import { doc, setDoc, getFirestore, update } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
+import { updateUserMainEmbedding } from "@/lib/firebase";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -42,14 +43,15 @@ export default NextAuth({
           lastSignIn: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           provider: account.provider,
-          googleId: profile.sub // Store the Google ID explicitly
+          googleId: profile.sub,
+          mainEmbedding: null,
+          lastEmbeddingUpdate: null
         }, { merge: true });
         
         console.log("Successfully stored user in Firebase");
         return true;
       } catch (error) {
         console.error("Error storing user in Firebase:", error);
-        // Log more details about the error
         console.error("Error details:", {
           code: error.code,
           message: error.message,
