@@ -3,6 +3,8 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { collection, deleteDoc, getDocs, query, where, writeBatch } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // Ensure this import is correct
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -17,6 +19,33 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     await signOut({ redirect: false });
     router.push("/");
+  };
+
+  const handleClearChat = async () => {
+    if (!session) return;
+
+    try {
+      // Query to get all messages for the current user
+      const messagesQuery = query(
+        collection(db, "users", session.user.id, "messages")
+      );
+
+      const querySnapshot = await getDocs(messagesQuery);
+      const batch = writeBatch(db);
+
+      querySnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+      console.log("Chat cleared from Firebase");
+
+      // Update the UI to reflect the cleared chat
+      // This could involve setting the messages state to an empty array
+      // setMessages([]);
+    } catch (error) {
+      console.error("Error clearing chat:", error);
+    }
   };
 
   if (status === "loading") {
@@ -51,12 +80,20 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="px-4 py-2 bg-[--accent-purple] text-[--foreground] rounded-full hover:bg-[--accent-purple] transition duration-300 shadow-lg"
-            >
-              Sign Out
-            </button>
+            <div className="flex space-x-4">
+              <button
+                onClick={handleClearChat}
+                className="px-4 py-2 bg-[--accent-blue] text-[--foreground] rounded-full hover:bg-[--accent-blue] transition duration-300 shadow-lg"
+              >
+                Clear Chat
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="px-4 py-2 bg-[--accent-purple] text-[--foreground] rounded-full hover:bg-[--accent-purple] transition duration-300 shadow-lg"
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
           
           <div className="bg-[--message-bg] rounded-lg p-6 mt-6">

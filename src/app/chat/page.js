@@ -3,6 +3,37 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
+import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch } from "firebase/firestore";
+import { db } from "@/lib/firebase"; // Ensure this import is correct
+
+async function saveMessageToFirebase(userId, message) {
+  try {
+    await addDoc(collection(db, "users", userId, "messages"), message);
+
+    // Check if there are more than 50 messages and delete the oldest ones
+    const messagesRef = collection(db, "users", userId, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.size > 50) {
+      const excessMessages = querySnapshot.size - 50;
+      const batch = writeBatch(db);
+      querySnapshot.docs.slice(0, excessMessages).forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error saving message to Firebase:", error);
+  }
+}
+
+async function loadMessagesFromFirebase(userId) {
+  const messagesRef = collection(db, "users", userId, "messages");
+  const q = query(messagesRef, orderBy("timestamp", "desc"), limit(50));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => doc.data()).reverse();
+}
 
 export default function Chat() {
   const { data: session, status } = useSession();
@@ -10,9 +41,7 @@ export default function Chat() {
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: "Hello! How can I help you today?" }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,19 +66,36 @@ export default function Chat() {
     textareaRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (session) {
+      loadMessagesFromFirebase(session.user.id).then((loadedMessages) => {
+        setMessages(loadedMessages); // Load messages without animation
+      });
+    }
+  }, [session]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!inputMessage.trim() || isLoading) return;
 
-    const userMessage = { role: "user", content: inputMessage };
-    
+    const userMessage = {
+      role: "user",
+      content: inputMessage,
+      timestamp: new Date().toISOString(),
+    };
+
     // Clear input first
     setInputMessage("");
-    setMessages(prev => [...prev, userMessage]);
-    
+    setMessages((prev) => [...prev, { ...userMessage, isNew: true }]); // Add animation
+
+    // Save user message to Firebase
+    if (session) {
+      saveMessageToFirebase(session.user.id, userMessage);
+    }
+
     // Reset height and focus immediately
     if (textareaRef.current) {
-      textareaRef.current.style.height = '76px';
+      textareaRef.current.style.height = "76px";
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
       });
@@ -62,13 +108,23 @@ export default function Chat() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...messages, userMessage]
+          messages: [...messages, userMessage],
         }),
       });
 
       const data = await response.json();
       if (response.ok) {
-        setMessages(prev => [...prev, { role: "assistant", content: data.message }]);
+        const assistantMessage = {
+          role: "assistant",
+          content: data.message,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, { ...assistantMessage, isNew: true }]); // Add animation
+
+        // Save assistant message to Firebase
+        if (session) {
+          saveMessageToFirebase(session.user.id, assistantMessage);
+        }
       } else {
         throw new Error(data.error || "Failed to get response");
       }
@@ -106,6 +162,32 @@ export default function Chat() {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!session) return;
+
+    try {
+      // Query to get all messages for the current user
+      const messagesQuery = query(
+        collection(db, "users", session.user.id, "messages")
+      );
+
+      const querySnapshot = await getDocs(messagesQuery);
+      const batch = writeBatch(db); // Create a writeBatch instance
+
+      querySnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+      console.log("Chat cleared from Firebase");
+
+      // Update the UI to reflect the cleared chat
+      setMessages([]);
+    } catch (error) {
+      console.error("Error clearing chat:", error);
+    }
+  };
+
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[--background]">
@@ -131,12 +213,20 @@ export default function Chat() {
             Hi, {firstName}
           </span>
         </div>
-        <button
-          onClick={() => signOut({ redirect: true, callbackUrl: "/" })}
-          className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover-scale"
-        >
-          Sign Out
-        </button>
+        <div className="flex space-x-4">
+          <button
+            onClick={handleClearChat}
+            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover-scale"
+          >
+            Clear Chat
+          </button>
+          <button
+            onClick={() => signOut({ redirect: true, callbackUrl: "/" })}
+            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover-scale"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
 
       {/* Main Content Area */}
@@ -151,7 +241,7 @@ export default function Chat() {
           <div className="flex-1 p-4 space-y-3 overflow-y-auto">
             {/* Placeholder user items */}
             {[1, 2, 3, 4, 5].map((_, index) => (
-              <div 
+              <div
                 key={index}
                 className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer"
               >
@@ -174,7 +264,7 @@ export default function Chat() {
                 key={index}
                 className={`flex ${
                   message.role === "user" ? "justify-end" : "justify-start"
-                } message-animation`}
+                } ${message.isNew ? "message-animation" : ""}`}
               >
                 <div
                   className={`max-w-[80%] p-4 ${
@@ -197,7 +287,10 @@ export default function Chat() {
           </div>
 
           {/* Input Form */}
-          <form onSubmit={handleSubmit} className="p-4 bg-[--chat-background] border-t border-[--border-color]">
+          <form
+            onSubmit={handleSubmit}
+            className="p-4 bg-[--chat-background] border-t border-[--border-color]"
+          >
             <div className="flex space-x-4 max-w-3xl mx-auto relative">
               <div className="flex-1 relative">
                 <textarea
@@ -212,7 +305,7 @@ export default function Chat() {
                   className="w-full p-4 pr-[60px] rounded-lg bg-[--input-bg] text-[--foreground] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[--accent-purple]/50 resize-none border border-[--border-color] transition-all duration-200 overflow-y-auto"
                   disabled={isLoading}
                   rows={2}
-                  style={{ height: '76px' }}
+                  style={{ height: "76px" }}
                 />
                 <button
                   type="submit"
@@ -222,12 +315,28 @@ export default function Chat() {
                   {isLoading ? (
                     <div className="flex items-center space-x-1">
                       <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></span>
-                      <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></span>
-                      <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></span>
+                      <span
+                        className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></span>
+                      <span
+                        className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"
+                        style={{ animationDelay: "0.4s" }}
+                      ></span>
                     </div>
                   ) : (
-                    <svg className="w-4 h-4 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    <svg
+                      className="w-4 h-4 transform rotate-45"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                      />
                     </svg>
                   )}
                 </button>
