@@ -78,3 +78,12 @@ body {
   transform: scale(1.02);
 }
 
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.duration-600 {
+  transition-duration: 600ms;
+}
+

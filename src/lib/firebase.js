@@ -87,3 +87,28 @@ export async function updateUserMainEmbedding(userId) {
     throw error;
   }
 }
+
+export function calculateCosineSimilarity(embedding1, embedding2) {
+  if (!embedding1 || !embedding2 || embedding1.length !== embedding2.length) {
+    return null;
+  }
+
+  let dotProduct = 0;
+  let norm1 = 0;
+  let norm2 = 0;
+
+  for (let i = 0; i < embedding1.length; i++) {
+    dotProduct += embedding1[i] * embedding2[i];
+    norm1 += embedding1[i] * embedding1[i];
+    norm2 += embedding2[i] * embedding2[i];
+  }
+
+  norm1 = Math.sqrt(norm1);
+  norm2 = Math.sqrt(norm2);
+
+  if (norm1 === 0 || norm2 === 0) {
+    return null;
+  }
+
+  return dotProduct / (norm1 * norm2);
+}

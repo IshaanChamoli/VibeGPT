@@ -3,8 +3,8 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch, getDoc, doc, setDoc } from "firebase/firestore";
-import { db, updateUserMainEmbedding } from "@/lib/firebase"; // Ensure this import is correct
+import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch, getDoc, doc, setDoc, onSnapshot } from "firebase/firestore";
+import { db, updateUserMainEmbedding, calculateCosineSimilarity } from "@/lib/firebase"; // Ensure this import is correct
 import LoadingScreen from '@/components/LoadingScreen';
 
 async function checkAndInitializeUser(userId) {
@@ -126,10 +126,13 @@ export default function Chat() {
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [users, setUsers] = useState([]);
+  const [prevUsers, setPrevUsers] = useState([]);
 
   // Separate loading states
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isChatLoading, setIsChatLoading] = useState(false);
+
+  const [clickedUserId, setClickedUserId] = useState(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -207,25 +210,58 @@ export default function Chat() {
     
     try {
       const usersRef = collection(db, "users");
-      const usersSnapshot = await getDocs(usersRef);
-      
-      const loadedUsers = usersSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-        .filter(user => user.id !== session.user.id); // Exclude current user
-      
-      setUsers(loadedUsers);
+      const unsubscribeUsers = onSnapshot(usersRef, async (usersSnapshot) => {
+        const currentUserDoc = usersSnapshot.docs.find(doc => doc.id === session.user.id);
+        const currentUserData = currentUserDoc?.data();
+        const myEmbedding = currentUserData?.mainEmbedding;
+
+        const loadedUsers = usersSnapshot.docs
+          .map(doc => {
+            const userData = doc.data();
+            let similarity = null;
+            
+            if (myEmbedding && userData.mainEmbedding) {
+              similarity = calculateCosineSimilarity(myEmbedding, userData.mainEmbedding);
+            }
+            
+            return {
+              id: doc.id,
+              similarity,
+              ...userData
+            };
+          })
+          .filter(user => user.id !== session.user.id)
+          .sort((a, b) => {
+            if (a.similarity === null && b.similarity === null) return 0;
+            if (a.similarity === null) return 1;
+            if (b.similarity === null) return -1;
+            return b.similarity - a.similarity;
+          });
+        
+        setUsers(loadedUsers);
+      });
+
+      return unsubscribeUsers;
     } catch (error) {
       console.error("Error loading users:", error);
     }
   };
 
   useEffect(() => {
+    let unsubscribe;
+    
     if (session) {
-      loadUsers();
+      loadUsers().then(unsubscribeFn => {
+        unsubscribe = unsubscribeFn;
+      });
     }
+
+    // Cleanup function
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [session]);
 
   const handleSubmit = async (e) => {
@@ -365,6 +401,12 @@ export default function Chat() {
     }
   };
 
+  const handleUserClick = (userId) => {
+    setClickedUserId(userId);
+    // Remove the click effect after animation completes
+    setTimeout(() => setClickedUserId(null), 800);
+  };
+
   if (status === "loading" || isInitialLoading) {
     return <LoadingScreen />;
   }
@@ -417,7 +459,8 @@ export default function Chat() {
               users.map((user) => (
                 <div
                   key={user.id}
-                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer"
+                  onClick={() => handleUserClick(user.id)}
+                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer transition-all duration-600"
                 >
                   {user.image ? (
                     <img
@@ -445,6 +488,28 @@ export default function Chat() {
                     <div className="text-xs text-[--foreground] opacity-50 truncate">
                       {user.email || 'No email'}
                     </div>
+                    {user.similarity !== null && (
+                      <div className="text-xs mt-1">
+                        <div className="flex items-center">
+                          <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-600 ${
+                                user.similarity >= 0 
+                                  ? "bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
+                                  : "bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
+                              }`}
+                              style={{ 
+                                width: `${Math.abs(Math.round(user.similarity * 100))}%`,
+                                marginLeft: user.similarity < 0 ? 'auto' : '0'
+                              }}
+                            ></div>
+                          </div>
+                          <span className="ml-2 text-[--foreground] opacity-75 transition-all duration-600">
+                            {user.similarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.similarity * 100))}%
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
