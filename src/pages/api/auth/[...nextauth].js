@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { doc, setDoc, getFirestore, update } from 'firebase/firestore';
+import { doc, setDoc, getFirestore, update, getDoc } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { updateUserMainEmbedding } from "@/lib/firebase";
 
@@ -29,34 +29,40 @@ export default NextAuth({
   callbacks: {
     async signIn({ user, account, profile }) {
       try {
-        console.log("Attempting to store user:", {
-          id: profile.sub,
-          name: user.name,
-          email: user.email
-        });
-
-        // Use profile.sub as the user ID (this is the Google user ID)
-        await setDoc(doc(db, "users", profile.sub), {
-          name: user.name,
-          email: user.email,
-          image: user.image,
-          lastSignIn: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          provider: account.provider,
-          googleId: profile.sub,
-          mainEmbedding: null,
-          lastEmbeddingUpdate: null
-        }, { merge: true });
+        // Get existing user doc first
+        const userRef = doc(db, "users", profile.sub);
+        const userDoc = await getDoc(userRef);
         
-        console.log("Successfully stored user in Firebase");
+        if (userDoc.exists()) {
+          // If user exists, only update non-embedding fields
+          const updateData = {
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            lastSignIn: new Date().toISOString(),
+            provider: account.provider,
+            googleId: profile.sub,
+          };
+          
+          await setDoc(userRef, updateData, { merge: true });
+        } else {
+          // Only for new users, initialize with null mainEmbedding
+          await setDoc(userRef, {
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            lastSignIn: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            provider: account.provider,
+            googleId: profile.sub,
+            mainEmbedding: null,
+            lastEmbeddingUpdate: null
+          });
+        }
+        
         return true;
       } catch (error) {
-        console.error("Error storing user in Firebase:", error);
-        console.error("Error details:", {
-          code: error.code,
-          message: error.message,
-          stack: error.stack
-        });
+        console.error("Error in signIn:", error);
         return true;
       }
     },

@@ -3,8 +3,30 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch } from "firebase/firestore";
+import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch, getDoc, doc, setDoc } from "firebase/firestore";
 import { db, updateUserMainEmbedding } from "@/lib/firebase"; // Ensure this import is correct
+
+async function checkAndInitializeUser(userId) {
+  try {
+    const userRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      await setDoc(userRef, {
+        createdAt: new Date().toISOString(),
+        lastEmbeddingUpdate: new Date().toISOString()
+      });
+      return;
+    }
+
+    const userData = userDoc.data();
+    if (!userData.mainEmbedding) {
+      await updateUserMainEmbedding(userId);
+    }
+  } catch (error) {
+    console.error("Error checking/initializing user:", error);
+  }
+}
 
 async function saveMessageToFirebase(userId, message) {
   try {
@@ -125,10 +147,18 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
-    if (session) {
-      loadMessagesFromFirebase(session.user.id).then(async (loadedMessages) => {
+    const initializeChat = async () => {
+      if (!session) return;
+
+      try {
+        // First, ensure user is properly initialized
+        await checkAndInitializeUser(session.user.id);
+        
+        // Then load messages
+        const loadedMessages = await loadMessagesFromFirebase(session.user.id);
+        
         if (loadedMessages.length === 0) {
-          // Fetch the initial message from OpenAI
+          setIsLoading(true);
           try {
             const response = await fetch("/api/chat", {
               method: "POST",
@@ -138,24 +168,30 @@ export default function Chat() {
 
             const data = await response.json();
             if (response.ok) {
-              const initialMessage = { 
-                role: "assistant", 
+              const initialMessage = {
+                role: "assistant",
                 content: data.message,
                 timestamp: new Date().toISOString()
               };
               setMessages([initialMessage]);
-              saveMessageToFirebase(session.user.id, initialMessage);
+              await saveMessageToFirebase(session.user.id, initialMessage);
             } else {
               throw new Error(data.error || "Failed to get initial message");
             }
           } catch (error) {
             console.error("Error fetching initial message:", error);
+          } finally {
+            setIsLoading(false);
           }
         } else {
           setMessages(loadedMessages);
         }
-      });
-    }
+      } catch (error) {
+        console.error("Error initializing chat:", error);
+      }
+    };
+
+    initializeChat();
   }, [session]);
 
   const handleSubmit = async (e) => {
@@ -249,12 +285,22 @@ export default function Chat() {
   const handleClearChat = async () => {
     if (!session) return;
 
-    // Show a confirmation dialog
     const confirmed = window.confirm("Are you sure you want to clear the chat? This action cannot be undone.");
     if (!confirmed) return;
 
     try {
-      // Query to get all messages for the current user
+      // Get user document first
+      const userRef = doc(db, "users", session.user.id);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.error("User document not found");
+        return;
+      }
+
+      const userData = userDoc.data();
+      
+      // Only proceed with chat clearing if we have user data
       const messagesQuery = query(
         collection(db, "users", session.user.id, "messages")
       );
@@ -267,9 +313,8 @@ export default function Chat() {
       });
 
       await batch.commit();
-      console.log("Chat cleared from Firebase");
 
-      // Fetch the initial message from OpenAI
+      // Get initial message
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -278,17 +323,14 @@ export default function Chat() {
 
       const data = await response.json();
       if (response.ok) {
-        const initialMessage = { 
-          role: "assistant", 
+        const initialMessage = {
+          role: "assistant",
           content: data.message,
           timestamp: new Date().toISOString()
         };
         setMessages([initialMessage]);
-        saveMessageToFirebase(session.user.id, initialMessage);
-      } else {
-        throw new Error(data.error || "Failed to get initial message");
+        await saveMessageToFirebase(session.user.id, initialMessage);
       }
-
     } catch (error) {
       console.error("Error clearing chat:", error);
     }

@@ -3,6 +3,24 @@
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db, updateUserMainEmbedding } from "@/lib/firebase";
+
+async function checkAndInitializeUser(userId) {
+  try {
+    const userRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      if (!userData.mainEmbedding) {
+        await updateUserMainEmbedding(userId);
+      }
+    }
+  } catch (error) {
+    console.error("Error checking/initializing user:", error);
+  }
+}
 
 export default function Welcome() {
   const { data: session, status } = useSession();
@@ -13,6 +31,12 @@ export default function Welcome() {
       router.push("/");
     }
   }, [status, router]);
+
+  useEffect(() => {
+    if (session) {
+      checkAndInitializeUser(session.user.id);
+    }
+  }, [session]);
 
   if (status === "loading") {
     return (

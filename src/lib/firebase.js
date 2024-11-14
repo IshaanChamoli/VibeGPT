@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, updateDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -31,24 +31,57 @@ export async function calculateAverageEmbedding(embeddings) {
 
 export async function updateUserMainEmbedding(userId) {
   try {
-    // Get all embeddings for the user
-    const embeddingsRef = collection(db, "users", userId, "embeddings");
-    const embeddingsSnapshot = await getDocs(embeddingsRef);
-    
-    const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
-    
-    if (embeddings.length === 0) return;
-    
-    const averageEmbedding = await calculateAverageEmbedding(embeddings);
-    
-    // Update the user document with the main embedding
+    // First check if user already has a mainEmbedding
     const userRef = doc(db, "users", userId);
-    await updateDoc(userRef, {
-      mainEmbedding: averageEmbedding,
-      lastEmbeddingUpdate: new Date().toISOString()
-    });
+    const userDoc = await getDoc(userRef);
     
-    return averageEmbedding;
+    if (!userDoc.exists()) return;
+    
+    const userData = userDoc.data();
+    // If mainEmbedding exists, ensure we have new embeddings before updating
+    if (userData.mainEmbedding) {
+      const embeddingsRef = collection(db, "users", userId, "embeddings");
+      const embeddingsSnapshot = await getDocs(embeddingsRef);
+      
+      if (embeddingsSnapshot.empty) {
+        console.warn("No embeddings found, preserving existing mainEmbedding");
+        return userData.mainEmbedding;
+      }
+      
+      const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
+      const averageEmbedding = await calculateAverageEmbedding(embeddings);
+      
+      if (!averageEmbedding) {
+        console.warn("Failed to calculate new embedding, preserving existing mainEmbedding");
+        return userData.mainEmbedding;
+      }
+      
+      await updateDoc(userRef, {
+        mainEmbedding: averageEmbedding,
+        lastEmbeddingUpdate: new Date().toISOString()
+      });
+      
+      return averageEmbedding;
+    } else {
+      // For first-time initialization
+      const embeddingsRef = collection(db, "users", userId, "embeddings");
+      const embeddingsSnapshot = await getDocs(embeddingsRef);
+      
+      if (embeddingsSnapshot.empty) {
+        console.log("No embeddings yet for new user");
+        return null;
+      }
+      
+      const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
+      const averageEmbedding = await calculateAverageEmbedding(embeddings);
+      
+      await updateDoc(userRef, {
+        mainEmbedding: averageEmbedding || null,
+        lastEmbeddingUpdate: new Date().toISOString()
+      });
+      
+      return averageEmbedding;
+    }
   } catch (error) {
     console.error("Error updating main embedding:", error);
     throw error;
