@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db, updateUserMainEmbedding } from "@/lib/firebase";
+import LoadingScreen from '@/components/LoadingScreen';
 
 async function checkAndInitializeUser(userId) {
   try {
@@ -39,11 +40,7 @@ export default function Welcome() {
   }, [session]);
 
   if (status === "loading") {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0D0D0E]">
-        <div className="text-2xl text-white">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!session) {

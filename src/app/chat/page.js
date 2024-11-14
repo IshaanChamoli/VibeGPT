@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch, getDoc, doc, setDoc } from "firebase/firestore";
 import { db, updateUserMainEmbedding } from "@/lib/firebase"; // Ensure this import is correct
+import LoadingScreen from '@/components/LoadingScreen';
 
 async function checkAndInitializeUser(userId) {
   try {
@@ -336,20 +337,13 @@ export default function Chat() {
     }
   };
 
-  if (status === "loading") {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[--background]">
-        <div className="text-2xl text-[--foreground]">Loading...</div>
-      </div>
-    );
+  if (status === "loading" || isLoading) {
+    return <LoadingScreen />;
   }
 
   if (!session) {
     return null;
   }
-
-  // Get first name only
-  const firstName = session.user.name.split(' ')[0];
 
   return (
     <div className="flex flex-col h-screen bg-[--chat-background]">
@@ -358,7 +352,7 @@ export default function Chat() {
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 rounded-full bg-[--accent-green] animate-pulse"></div>
           <span className="text-lg font-medium bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] text-transparent bg-clip-text">
-            Hi, {firstName}
+            Hi, {session.user.email}
           </span>
         </div>
         <div className="flex space-x-4">

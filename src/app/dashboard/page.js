@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { collection, deleteDoc, getDocs, query, where, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Ensure this import is correct
+import LoadingScreen from '@/components/LoadingScreen';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -65,11 +66,7 @@ export default function Dashboard() {
   };
 
   if (status === "loading") {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[--background]">
-        <div className="text-2xl text-[--foreground]">Loading...</div>
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!session) {
