@@ -125,6 +125,11 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [users, setUsers] = useState([]);
+
+  // Separate loading states
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -159,7 +164,7 @@ export default function Chat() {
         const loadedMessages = await loadMessagesFromFirebase(session.user.id);
         
         if (loadedMessages.length === 0) {
-          setIsLoading(true);
+          setIsChatLoading(true);
           try {
             const response = await fetch("/api/chat", {
               method: "POST",
@@ -182,22 +187,50 @@ export default function Chat() {
           } catch (error) {
             console.error("Error fetching initial message:", error);
           } finally {
-            setIsLoading(false);
+            setIsChatLoading(false);
           }
         } else {
           setMessages(loadedMessages);
         }
       } catch (error) {
         console.error("Error initializing chat:", error);
+      } finally {
+        setIsInitialLoading(false);
       }
     };
 
     initializeChat();
   }, [session]);
 
+  const loadUsers = async () => {
+    if (!session) return;
+    
+    try {
+      const usersRef = collection(db, "users");
+      const usersSnapshot = await getDocs(usersRef);
+      
+      const loadedUsers = usersSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(user => user.id !== session.user.id); // Exclude current user
+      
+      setUsers(loadedUsers);
+    } catch (error) {
+      console.error("Error loading users:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      loadUsers();
+    }
+  }, [session]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
+    if (!inputMessage.trim() || isChatLoading) return;
 
     const userMessage = {
       role: "user",
@@ -205,16 +238,13 @@ export default function Chat() {
       timestamp: new Date().toISOString(),
     };
 
-    // Clear input first
     setInputMessage("");
-    setMessages((prev) => [...prev, { ...userMessage, isNew: true }]); // Add animation
+    setMessages((prev) => [...prev, { ...userMessage, isNew: true }]);
 
-    // Save user message to Firebase
     if (session) {
       saveMessageToFirebase(session.user.id, userMessage);
     }
 
-    // Reset height and focus immediately
     if (textareaRef.current) {
       textareaRef.current.style.height = "76px";
       requestAnimationFrame(() => {
@@ -222,7 +252,7 @@ export default function Chat() {
       });
     }
 
-    setIsLoading(true);
+    setIsChatLoading(true);
 
     try {
       const response = await fetch("/api/chat", {
@@ -240,9 +270,8 @@ export default function Chat() {
           content: data.message,
           timestamp: new Date().toISOString(),
         };
-        setMessages((prev) => [...prev, { ...assistantMessage, isNew: true }]); // Add animation
+        setMessages((prev) => [...prev, { ...assistantMessage, isNew: true }]);
 
-        // Save assistant message to Firebase
         if (session) {
           saveMessageToFirebase(session.user.id, assistantMessage);
         }
@@ -252,8 +281,7 @@ export default function Chat() {
     } catch (error) {
       console.error("Chat error:", error);
     } finally {
-      setIsLoading(false);
-      // Focus back on the textarea after response
+      setIsChatLoading(false);
       textareaRef.current?.focus();
     }
   };
@@ -337,7 +365,7 @@ export default function Chat() {
     }
   };
 
-  if (status === "loading" || isLoading) {
+  if (status === "loading" || isInitialLoading) {
     return <LoadingScreen />;
   }
 
@@ -377,23 +405,50 @@ export default function Chat() {
         <div className="w-64 bg-[--sidebar] border-r border-[--border-color] flex flex-col">
           <div className="p-4 border-b border-[--border-color]">
             <h2 className="text-lg font-semibold bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] text-transparent bg-clip-text">
-              Similar Users
+              Users
             </h2>
           </div>
           <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-            {/* Placeholder user items */}
-            {[1, 2, 3, 4, 5].map((_, index) => (
-              <div
-                key={index}
-                className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] opacity-50"></div>
-                <div className="flex-1">
-                  <div className="h-3 w-24 bg-[--border-color] rounded animate-pulse"></div>
-                  <div className="h-2 w-16 bg-[--border-color] rounded mt-2 opacity-50 animate-pulse"></div>
-                </div>
+            {users.length === 0 ? (
+              <div className="text-[--foreground] text-sm opacity-50 text-center py-4">
+                No other users yet
               </div>
-            ))}
+            ) : (
+              users.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer"
+                >
+                  {user.image ? (
+                    <img
+                      src={user.image}
+                      alt={user.name || 'User'}
+                      className="w-8 h-8 rounded-full object-cover"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.parentElement.innerHTML = `
+                          <div class="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium">
+                            ${user.name ? user.name[0].toUpperCase() : '?'}
+                          </div>
+                        `;
+                      }}
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium">
+                      {user.name ? user.name[0].toUpperCase() : '?'}
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden">
+                    <div className="text-sm font-medium text-[--foreground] truncate">
+                      {user.name || 'Anonymous'}
+                    </div>
+                    <div className="text-xs text-[--foreground] opacity-50 truncate">
+                      {user.email || 'No email'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -445,16 +500,16 @@ export default function Chat() {
                   onKeyDown={handleKeyDown}
                   placeholder="Send a message... ✨"
                   className="w-full p-4 pr-[60px] rounded-lg bg-[--input-bg] text-[--foreground] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[--accent-purple]/50 resize-none border border-[--border-color] transition-all duration-200 overflow-y-auto"
-                  disabled={isLoading}
+                  disabled={isChatLoading}
                   rows={2}
                   style={{ height: "76px" }}
                 />
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isChatLoading}
                   className="absolute right-2 bottom-[14px] w-10 h-10 flex items-center justify-center bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] text-white rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 hover-scale shadow-lg"
                 >
-                  {isLoading ? (
+                  {isChatLoading ? (
                     <div className="flex items-center space-x-1">
                       <span className="w-1.5 h-1.5 bg-white rounded-full animate-bounce"></span>
                       <span
