@@ -221,64 +221,62 @@ export default function Chat() {
     try {
       const usersRef = collection(db, "users");
       
+      // Listen to current user's document for embedding updates
       const unsubscribeCurrentUser = onSnapshot(doc(db, "users", session.user.id), (currentUserDoc) => {
         const currentUserData = currentUserDoc.data();
         const myMainEmbedding = currentUserData?.mainEmbedding;
         const myNormalizedEmbedding = currentUserData?.normalizedEmbedding;
         
+        // Listen to all users' documents for their embedding updates
         const unsubscribeUsers = onSnapshot(usersRef, (usersSnapshot) => {
           const loadedUsers = usersSnapshot.docs
             .filter(doc => doc.id !== session.user.id)
             .map(doc => {
               const userData = doc.data();
               
-              // Calculate main similarity
+              // Calculate similarities
               const mainSimilarity = myMainEmbedding && userData.mainEmbedding
                 ? calculateCosineSimilarity(myMainEmbedding, userData.mainEmbedding)
                 : null;
               
-              // Calculate normalized similarity
               const normalizedSimilarity = myNormalizedEmbedding && userData.normalizedEmbedding
                 ? calculateCosineSimilarity(myNormalizedEmbedding, userData.normalizedEmbedding)
                 : null;
               
-              // Calculate scaled similarity using normalized similarity
               const scaledSimilarity = normalizedSimilarity !== null
-                ? Math.max(0, (normalizedSimilarity - 0.5) * 2)  // Scale from 0.5-1 range to 0-1 range
+                ? Math.max(0, (normalizedSimilarity - 0.5) * 2)
                 : null;
               
-              // Add amplified similarity calculation using the scaled normalized similarity
               const amplifiedSimilarity = scaledSimilarity !== null
                 ? sigmoidAmplify(scaledSimilarity)
                 : null;
-              
-              // Add console.log for debugging
-              console.log('User similarities:', {
-                name: userData.name,
-                mainSimilarity,
-                normalizedSimilarity,
-                scaledSimilarity,
-                amplifiedSimilarity
-              });
               
               return {
                 id: doc.id,
                 name: userData.name,
                 email: userData.email,
                 image: userData.image,
-                mainSimilarity,
-                normalizedSimilarity,
-                scaledSimilarity,
-                amplifiedSimilarity
+                mainSimilarity: mainSimilarity !== null ? -mainSimilarity : null, // Negate for descending order
+                normalizedSimilarity: normalizedSimilarity !== null ? -normalizedSimilarity : null, // Negate for descending order
+                scaledSimilarity: scaledSimilarity !== null ? -scaledSimilarity : null, // Negate for descending order
+                amplifiedSimilarity: amplifiedSimilarity !== null ? -amplifiedSimilarity : null // Negate for descending order
               };
             })
             .sort((a, b) => {
-              if (a.normalizedSimilarity === null && b.normalizedSimilarity === null) return 0;
-              if (a.normalizedSimilarity === null) return 1;
-              if (b.normalizedSimilarity === null) return -1;
-              return b.normalizedSimilarity - a.normalizedSimilarity;
+              if (a.amplifiedSimilarity === null && b.amplifiedSimilarity === null) return 0;
+              if (a.amplifiedSimilarity === null) return 1;
+              if (b.amplifiedSimilarity === null) return -1;
+              return a.amplifiedSimilarity - b.amplifiedSimilarity; // Already negated, so smaller is better
             })
-            .slice(0, 5);
+            .slice(0, 5)
+            .map(user => ({
+              ...user,
+              // Un-negate the values for display
+              mainSimilarity: user.mainSimilarity !== null ? -user.mainSimilarity : null,
+              normalizedSimilarity: user.normalizedSimilarity !== null ? -user.normalizedSimilarity : null,
+              scaledSimilarity: user.scaledSimilarity !== null ? -user.scaledSimilarity : null,
+              amplifiedSimilarity: user.amplifiedSimilarity !== null ? -user.amplifiedSimilarity : null
+            }));
           
           setUsers(loadedUsers);
           if (loadedUsers.length > 0) {
@@ -288,11 +286,12 @@ export default function Chat() {
 
         return () => {
           unsubscribeUsers();
-          unsubscribeCurrentUser();
         };
       });
 
-      return unsubscribeCurrentUser;
+      return () => {
+        unsubscribeCurrentUser();
+      };
     } catch (error) {
       console.error("Error loading users:", error);
     }
