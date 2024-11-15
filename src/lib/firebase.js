@@ -29,6 +29,20 @@ export async function calculateAverageEmbedding(embeddings) {
   return sumArray.map(sum => sum / embeddings.length);
 }
 
+export function normalizeEmbedding(embedding) {
+  if (!embedding) return null;
+  
+  // Calculate the square root of the sum of squares (L2 norm)
+  const squareSum = embedding.reduce((sum, val) => sum + val * val, 0);
+  const norm = Math.sqrt(squareSum);
+  
+  // Avoid division by zero
+  if (norm === 0) return null;
+  
+  // Normalize each component
+  return embedding.map(val => val / norm);
+}
+
 export async function updateUserMainEmbedding(userId) {
   try {
     // First check if user already has a mainEmbedding
@@ -56,8 +70,12 @@ export async function updateUserMainEmbedding(userId) {
         return userData.mainEmbedding;
       }
       
+      // Calculate normalized embedding
+      const normalizedEmbedding = normalizeEmbedding(averageEmbedding);
+      
       await updateDoc(userRef, {
         mainEmbedding: averageEmbedding,
+        normalizedEmbedding: normalizedEmbedding,
         lastEmbeddingUpdate: new Date().toISOString()
       });
       
@@ -75,8 +93,12 @@ export async function updateUserMainEmbedding(userId) {
       const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
       const averageEmbedding = await calculateAverageEmbedding(embeddings);
       
+      // Calculate normalized embedding
+      const normalizedEmbedding = normalizeEmbedding(averageEmbedding);
+      
       await updateDoc(userRef, {
         mainEmbedding: averageEmbedding || null,
+        normalizedEmbedding: normalizedEmbedding || null,
         lastEmbeddingUpdate: new Date().toISOString()
       });
       

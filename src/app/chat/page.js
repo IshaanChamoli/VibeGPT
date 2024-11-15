@@ -7,6 +7,13 @@ import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, w
 import { db, updateUserMainEmbedding, calculateCosineSimilarity } from "@/lib/firebase"; // Ensure this import is correct
 import LoadingScreen from '@/components/LoadingScreen';
 
+const sigmoidAmplify = (similarity) => {
+  if (similarity === null) return null;
+  // Center around 0.5 with increased steepness of 10 for scaled values
+  const centered = (similarity - 0.5) * 10;
+  return 1 / (1 + Math.exp(-centered));
+};
+
 async function checkAndInitializeUser(userId) {
   try {
     const userRef = doc(db, "users", userId);
@@ -214,32 +221,62 @@ export default function Chat() {
     try {
       const usersRef = collection(db, "users");
       
-      // Create two separate listeners
       const unsubscribeCurrentUser = onSnapshot(doc(db, "users", session.user.id), (currentUserDoc) => {
         const currentUserData = currentUserDoc.data();
-        const myEmbedding = currentUserData?.mainEmbedding;
+        const myMainEmbedding = currentUserData?.mainEmbedding;
+        const myNormalizedEmbedding = currentUserData?.normalizedEmbedding;
         
-        // Update other users' similarities whenever current user's embedding changes
         const unsubscribeUsers = onSnapshot(usersRef, (usersSnapshot) => {
           const loadedUsers = usersSnapshot.docs
             .filter(doc => doc.id !== session.user.id)
             .map(doc => {
               const userData = doc.data();
+              
+              // Calculate main similarity
+              const mainSimilarity = myMainEmbedding && userData.mainEmbedding
+                ? calculateCosineSimilarity(myMainEmbedding, userData.mainEmbedding)
+                : null;
+              
+              // Calculate normalized similarity
+              const normalizedSimilarity = myNormalizedEmbedding && userData.normalizedEmbedding
+                ? calculateCosineSimilarity(myNormalizedEmbedding, userData.normalizedEmbedding)
+                : null;
+              
+              // Calculate scaled similarity using normalized similarity
+              const scaledSimilarity = normalizedSimilarity !== null
+                ? Math.max(0, (normalizedSimilarity - 0.5) * 2)  // Scale from 0.5-1 range to 0-1 range
+                : null;
+              
+              // Add amplified similarity calculation using the scaled normalized similarity
+              const amplifiedSimilarity = scaledSimilarity !== null
+                ? sigmoidAmplify(scaledSimilarity)
+                : null;
+              
+              // Add console.log for debugging
+              console.log('User similarities:', {
+                name: userData.name,
+                mainSimilarity,
+                normalizedSimilarity,
+                scaledSimilarity,
+                amplifiedSimilarity
+              });
+              
               return {
                 id: doc.id,
                 name: userData.name,
                 email: userData.email,
                 image: userData.image,
-                similarity: myEmbedding && userData.mainEmbedding 
-                  ? calculateCosineSimilarity(myEmbedding, userData.mainEmbedding)
-                  : null
+                mainSimilarity,
+                normalizedSimilarity,
+                scaledSimilarity,
+                amplifiedSimilarity
               };
             })
             .sort((a, b) => {
-              if (a.similarity === null && b.similarity === null) return 0;
-              if (a.similarity === null) return 1;
-              if (b.similarity === null) return -1;
-              return b.similarity - a.similarity;
+              if (a.normalizedSimilarity === null && b.normalizedSimilarity === null) return 0;
+              if (a.normalizedSimilarity === null) return 1;
+              if (b.normalizedSimilarity === null) return -1;
+              return b.normalizedSimilarity - a.normalizedSimilarity;
             })
             .slice(0, 5);
           
@@ -249,7 +286,6 @@ export default function Chat() {
           }
         });
 
-        // Store both unsubscribe functions
         return () => {
           unsubscribeUsers();
           unsubscribeCurrentUser();
@@ -545,31 +581,84 @@ export default function Chat() {
                         <div className="text-xs text-[--foreground] opacity-50 truncate">
                           {user.email || 'No email'}
                         </div>
-                        {user.similarity !== null && (
+                        {user.mainSimilarity !== null && (
                           <div className="text-xs mt-1">
                             <div className="flex items-center">
                               <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full transform-gpu ${
-                                    user.similarity >= 0 
-                                      ? "bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
-                                      : "bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
-                                  }`}
+                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
                                   style={{ 
-                                    width: `${Math.abs(Math.round(user.similarity * 100))}%`,
-                                    marginLeft: user.similarity < 0 ? 'auto' : '0',
-                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                                    willChange: 'width, margin-left'
+                                    width: `${Math.abs(Math.round(user.mainSimilarity * 100))}%`,
+                                    marginLeft: user.mainSimilarity < 0 ? 'auto' : '0',
+                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
                                   }}
                                 ></div>
                               </div>
                               <span 
                                 className="ml-2 text-[--foreground] opacity-75"
-                                style={{
-                                  transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                                }}
                               >
-                                {user.similarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.similarity * 100))}%
+                                Raw: {user.mainSimilarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.mainSimilarity * 100))}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {user.normalizedSimilarity !== null && (
+                          <div className="text-xs mt-1">
+                            <div className="flex items-center">
+                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-green] to-[--accent-blue]"
+                                  style={{ 
+                                    width: `${Math.abs(Math.round(user.normalizedSimilarity * 100))}%`,
+                                    marginLeft: user.normalizedSimilarity < 0 ? 'auto' : '0',
+                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+                                  }}
+                                ></div>
+                              </div>
+                              <span 
+                                className="ml-2 text-[--foreground] opacity-75"
+                              >
+                                Norm: {user.normalizedSimilarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.normalizedSimilarity * 100))}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {user.scaledSimilarity !== null && (
+                          <div className="text-xs mt-1">
+                            <div className="flex items-center">
+                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transform-gpu bg-blue-500"
+                                  style={{ 
+                                    width: `${Math.round(user.scaledSimilarity * 100)}%`,
+                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+                                  }}
+                                ></div>
+                              </div>
+                              <span 
+                                className="ml-2 text-[--foreground] opacity-75"
+                              >
+                                Scaled: {Math.round(user.scaledSimilarity * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {user.amplifiedSimilarity !== null && (
+                          <div className="text-xs mt-1">
+                            <div className="flex items-center">
+                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
+                                  style={{ 
+                                    width: `${Math.round(user.amplifiedSimilarity * 100)}%`,
+                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+                                  }}
+                                ></div>
+                              </div>
+                              <span 
+                                className="ml-2 text-[--foreground] opacity-75"
+                              >
+                                Amp: {Math.round(user.amplifiedSimilarity * 100)}%
                               </span>
                             </div>
                           </div>

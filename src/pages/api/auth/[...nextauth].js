@@ -46,7 +46,7 @@ export default NextAuth({
           
           await setDoc(userRef, updateData, { merge: true });
         } else {
-          // Only for new users, initialize with null mainEmbedding
+          // Only for new users, initialize with null embeddings
           await setDoc(userRef, {
             name: user.name,
             email: user.email,
@@ -56,6 +56,7 @@ export default NextAuth({
             provider: account.provider,
             googleId: profile.sub,
             mainEmbedding: null,
+            normalizedEmbedding: null,
             lastEmbeddingUpdate: null
           });
         }
