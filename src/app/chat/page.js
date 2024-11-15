@@ -500,7 +500,14 @@ export default function Chat() {
               Similar Users
             </h2>
           </div>
-          <div className="flex-1 p-4 space-y-3 overflow-y-auto">
+          <div className="flex-1 p-4 space-y-3 overflow-y-auto overflow-x-hidden scrollbar-none"
+               style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+            {/* Add this CSS rule to hide the scrollbar */}
+            <style jsx global>{`
+              .scrollbar-none::-webkit-scrollbar {
+                display: none;
+              }
+            `}</style>
             {users.length === 0 ? (
               // Show 5 placeholder cards when no users exist
               Array(5).fill(null).map((_, index) => (
@@ -522,160 +529,176 @@ export default function Chat() {
               [...users, ...Array(Math.max(0, 5 - users.length)).fill(null)].map((user, index) => (
                 <div
                   key={user?.id || `placeholder-${index}`}
-                  onClick={() => user && handleUserClick(user.id)}
-                  className={`flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] ${
-                    user ? 'hover-scale cursor-pointer transition-all duration-600' : 'opacity-40'
-                  }`}
+                  className="relative group"
                 >
-                  {user ? (
-                    <>
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium overflow-hidden">
-                        {user.image ? (
-                          <>
-                            <img
-                              src={user.image.replace('=s96-c', '=s192-c')}
-                              alt={user.name || 'User'}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                console.log('Image failed to load:', user.image);
-                                e.target.style.display = 'none';
-                                const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
-                                if (fallbackDiv) {
-                                  fallbackDiv.style.display = 'flex';
-                                }
-                              }}
-                              onLoad={(e) => {
-                                console.log('Image loaded successfully:', user.image);
-                                e.target.style.display = 'block';
-                                const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
-                                if (fallbackDiv) {
-                                  fallbackDiv.style.display = 'none';
-                                }
-                              }}
-                              style={{ display: 'block' }}
-                            />
-                            <div 
-                              className="fallback-initial w-full h-full items-center justify-center"
-                              style={{ 
-                                display: 'none',
-                                position: 'absolute',
-                                inset: 0,
-                                backgroundColor: 'transparent'
-                              }}
-                            >
-                              {user.name ? user.name[0].toUpperCase() : '?'}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="fallback-initial w-full h-full flex items-center justify-center">
-                            {user.name ? user.name[0].toUpperCase() : '?'}
+                  <div
+                    onClick={() => user && handleUserClick(user.id)}
+                    className={`flex flex-col p-3 rounded-xl bg-[--message-bg] border border-[--border-color] transition-all duration-300 ${
+                      user ? 'hover-scale cursor-pointer group-hover:shadow-xl' : 'opacity-40'
+                    }`}
+                  >
+                    {user ? (
+                      <>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium overflow-hidden">
+                            {user.image ? (
+                              <>
+                                <img
+                                  src={user.image.replace('=s96-c', '=s192-c')}
+                                  alt={user.name || 'User'}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    console.log('Image failed to load:', user.image);
+                                    e.target.style.display = 'none';
+                                    const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
+                                    if (fallbackDiv) {
+                                      fallbackDiv.style.display = 'flex';
+                                    }
+                                  }}
+                                  onLoad={(e) => {
+                                    console.log('Image loaded successfully:', user.image);
+                                    e.target.style.display = 'block';
+                                    const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
+                                    if (fallbackDiv) {
+                                      fallbackDiv.style.display = 'none';
+                                    }
+                                  }}
+                                  style={{ display: 'block' }}
+                                />
+                                <div 
+                                  className="fallback-initial w-full h-full items-center justify-center"
+                                  style={{ 
+                                    display: 'none',
+                                    position: 'absolute',
+                                    inset: 0,
+                                    backgroundColor: 'transparent'
+                                  }}
+                                >
+                                  {user.name ? user.name[0].toUpperCase() : '?'}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="fallback-initial w-full h-full flex items-center justify-center">
+                                {user.name ? user.name[0].toUpperCase() : '?'}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <div className="text-sm font-medium text-[--foreground] truncate">
-                          {user.name || 'Anonymous'}
+                          <div className="flex-1 overflow-hidden">
+                            <div className="text-sm font-medium text-[--foreground] truncate">
+                              {user.name || 'Anonymous'}
+                            </div>
+                            <div className="text-xs text-[--foreground] opacity-50 truncate">
+                              {user.email || 'No email'}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-[--foreground] opacity-50 truncate">
-                          {user.email || 'No email'}
+
+                        <div className="mt-2">
+                          <div className="flex items-center">
+                            <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                              <div
+                                className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
+                                style={{ 
+                                  width: `${Math.round(user.amplifiedSimilarity * 100)}%`,
+                                  transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}
+                              ></div>
+                            </div>
+                            <span className="ml-2 text-xs text-[--foreground] opacity-75">
+                              {Math.round(user.amplifiedSimilarity * 100)}%
+                            </span>
+                          </div>
                         </div>
-                        {user.mainSimilarity !== null && (
-                          <div className="text-xs mt-1">
-                            <div className="flex items-center">
-                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
-                                  style={{ 
-                                    width: `${Math.abs(Math.round(user.mainSimilarity * 100))}%`,
-                                    marginLeft: user.mainSimilarity < 0 ? 'auto' : '0',
-                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-                                  }}
-                                ></div>
-                              </div>
-                              <span 
-                                className="ml-2 text-[--foreground] opacity-75"
-                              >
-                                Raw: {user.mainSimilarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.mainSimilarity * 100))}%
-                              </span>
+
+                        <div className="overflow-hidden transition-all duration-300 max-h-0 group-hover:max-h-48 mt-2 space-y-3 opacity-0 group-hover:opacity-100">
+                          <div className="text-xs font-medium text-[--foreground] pt-2 border-t border-[--border-color]">
+                            <div className="flex justify-between">
+                              <span>Detailed Metrics</span>
+                              <span className="text-[0.7em]">(Cosine Similarity)</span>
                             </div>
                           </div>
-                        )}
-                        {user.normalizedSimilarity !== null && (
-                          <div className="text-xs mt-1">
-                            <div className="flex items-center">
-                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-green] to-[--accent-blue]"
-                                  style={{ 
-                                    width: `${Math.abs(Math.round(user.normalizedSimilarity * 100))}%`,
-                                    marginLeft: user.normalizedSimilarity < 0 ? 'auto' : '0',
-                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-                                  }}
-                                ></div>
-                              </div>
-                              <span 
-                                className="ml-2 text-[--foreground] opacity-75"
-                              >
-                                Norm: {user.normalizedSimilarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.normalizedSimilarity * 100))}%
+                          
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-[--foreground] opacity-75">Raw Embeddings</span>
+                              <span className="text-[--foreground]">
+                                {user.mainSimilarity >= 0 ? '+' : '-'}{Math.abs(user.mainSimilarity * 100).toFixed(1)}%
                               </span>
                             </div>
-                          </div>
-                        )}
-                        {user.scaledSimilarity !== null && (
-                          <div className="text-xs mt-1">
-                            <div className="flex items-center">
-                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transform-gpu bg-blue-500"
-                                  style={{ 
-                                    width: `${Math.round(user.scaledSimilarity * 100)}%`,
-                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-                                  }}
-                                ></div>
-                              </div>
-                              <span 
-                                className="ml-2 text-[--foreground] opacity-75"
-                              >
-                                Scaled: {Math.round(user.scaledSimilarity * 100)}%
-                              </span>
+                            <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
+                                style={{ 
+                                  width: `${Math.abs(Math.round(user.mainSimilarity * 100))}%`,
+                                  marginLeft: user.mainSimilarity < 0 ? 'auto' : '0'
+                                }}
+                              ></div>
                             </div>
                           </div>
-                        )}
-                        {user.amplifiedSimilarity !== null && (
-                          <div className="text-xs mt-1">
-                            <div className="flex items-center">
-                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transform-gpu bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
-                                  style={{ 
-                                    width: `${Math.round(user.amplifiedSimilarity * 100)}%`,
-                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
-                                  }}
-                                ></div>
-                              </div>
-                              <span 
-                                className="ml-2 text-[--foreground] opacity-75"
-                              >
-                                Amp: {Math.round(user.amplifiedSimilarity * 100)}%
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-[--foreground] opacity-75">Norm Embeddings</span>
+                              <span className="text-[--foreground]">
+                                {user.normalizedSimilarity >= 0 ? '+' : '-'}{Math.abs(user.normalizedSimilarity * 100).toFixed(1)}%
                               </span>
                             </div>
+                            <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[--accent-green] to-[--accent-blue]"
+                                style={{ 
+                                  width: `${Math.abs(Math.round(user.normalizedSimilarity * 100))}%`,
+                                  marginLeft: user.normalizedSimilarity < 0 ? 'auto' : '0'
+                                }}
+                              ></div>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
-                        <span className="text-[--foreground] opacity-50"> </span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
-                        <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
-                      </div>
-                    </>
-                  )}
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-[--foreground] opacity-75">Scaled</span>
+                              <span className="text-[--foreground]">{(user.scaledSimilarity * 100).toFixed(1)}%</span>
+                            </div>
+                            <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-green]"
+                                style={{ 
+                                  width: `${Math.round(user.scaledSimilarity * 100)}%`
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-[--foreground] opacity-75">Sigmoid Amplified</span>
+                              <span className="text-[--foreground]">{(user.amplifiedSimilarity * 100).toFixed(1)}%</span>
+                            </div>
+                            <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
+                                style={{ 
+                                  width: `${Math.round(user.amplifiedSimilarity * 100)}%`
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
+                          <span className="text-[--foreground] opacity-50"> </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
+                          <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))
             )}
