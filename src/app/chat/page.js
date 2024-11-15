@@ -134,6 +134,9 @@ export default function Chat() {
 
   const [clickedUserId, setClickedUserId] = useState(null);
 
+  // Add this state to track if we've loaded users
+  const [hasLoadedUsers, setHasLoadedUsers] = useState(false);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -206,42 +209,54 @@ export default function Chat() {
   }, [session]);
 
   const loadUsers = async () => {
-    if (!session) return;
+    if (!session || hasLoadedUsers) return;
     
     try {
       const usersRef = collection(db, "users");
-      const unsubscribeUsers = onSnapshot(usersRef, async (usersSnapshot) => {
-        const currentUserDoc = usersSnapshot.docs.find(doc => doc.id === session.user.id);
-        const currentUserData = currentUserDoc?.data();
+      
+      // Create two separate listeners
+      const unsubscribeCurrentUser = onSnapshot(doc(db, "users", session.user.id), (currentUserDoc) => {
+        const currentUserData = currentUserDoc.data();
         const myEmbedding = currentUserData?.mainEmbedding;
-
-        const loadedUsers = usersSnapshot.docs
-          .map(doc => {
-            const userData = doc.data();
-            let similarity = null;
-            
-            if (myEmbedding && userData.mainEmbedding) {
-              similarity = calculateCosineSimilarity(myEmbedding, userData.mainEmbedding);
-            }
-            
-            return {
-              id: doc.id,
-              similarity,
-              ...userData
-            };
-          })
-          .filter(user => user.id !== session.user.id)
-          .sort((a, b) => {
-            if (a.similarity === null && b.similarity === null) return 0;
-            if (a.similarity === null) return 1;
-            if (b.similarity === null) return -1;
-            return b.similarity - a.similarity;
-          });
         
-        setUsers(loadedUsers);
+        // Update other users' similarities whenever current user's embedding changes
+        const unsubscribeUsers = onSnapshot(usersRef, (usersSnapshot) => {
+          const loadedUsers = usersSnapshot.docs
+            .filter(doc => doc.id !== session.user.id)
+            .map(doc => {
+              const userData = doc.data();
+              return {
+                id: doc.id,
+                name: userData.name,
+                email: userData.email,
+                image: userData.image,
+                similarity: myEmbedding && userData.mainEmbedding 
+                  ? calculateCosineSimilarity(myEmbedding, userData.mainEmbedding)
+                  : null
+              };
+            })
+            .sort((a, b) => {
+              if (a.similarity === null && b.similarity === null) return 0;
+              if (a.similarity === null) return 1;
+              if (b.similarity === null) return -1;
+              return b.similarity - a.similarity;
+            })
+            .slice(0, 5);
+          
+          setUsers(loadedUsers);
+          if (loadedUsers.length > 0) {
+            setHasLoadedUsers(true);
+          }
+        });
+
+        // Store both unsubscribe functions
+        return () => {
+          unsubscribeUsers();
+          unsubscribeCurrentUser();
+        };
       });
 
-      return unsubscribeUsers;
+      return unsubscribeCurrentUser;
     } catch (error) {
       console.error("Error loading users:", error);
     }
@@ -250,19 +265,18 @@ export default function Chat() {
   useEffect(() => {
     let unsubscribe;
     
-    if (session) {
+    if (session && !hasLoadedUsers) {
       loadUsers().then(unsubscribeFn => {
         unsubscribe = unsubscribeFn;
       });
     }
 
-    // Cleanup function
     return () => {
       if (unsubscribe) {
         unsubscribe();
       }
     };
-  }, [session]);
+  }, [session, hasLoadedUsers]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -447,70 +461,132 @@ export default function Chat() {
         <div className="w-64 bg-[--sidebar] border-r border-[--border-color] flex flex-col">
           <div className="p-4 border-b border-[--border-color]">
             <h2 className="text-lg font-semibold bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] text-transparent bg-clip-text">
-              Users
+              Similar Users
             </h2>
           </div>
           <div className="flex-1 p-4 space-y-3 overflow-y-auto">
             {users.length === 0 ? (
-              <div className="text-[--foreground] text-sm opacity-50 text-center py-4">
-                No other users yet
-              </div>
-            ) : (
-              users.map((user) => (
+              // Show 5 placeholder cards when no users exist
+              Array(5).fill(null).map((_, index) => (
                 <div
-                  key={user.id}
-                  onClick={() => handleUserClick(user.id)}
-                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] hover-scale cursor-pointer transition-all duration-600"
+                  key={index}
+                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] opacity-40"
                 >
-                  {user.image ? (
-                    <img
-                      src={user.image}
-                      alt={user.name || 'User'}
-                      className="w-8 h-8 rounded-full object-cover"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.parentElement.innerHTML = `
-                          <div class="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium">
-                            ${user.name ? user.name[0].toUpperCase() : '?'}
-                          </div>
-                        `;
-                      }}
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium">
-                      {user.name ? user.name[0].toUpperCase() : '?'}
-                    </div>
-                  )}
-                  <div className="flex-1 overflow-hidden">
-                    <div className="text-sm font-medium text-[--foreground] truncate">
-                      {user.name || 'Anonymous'}
-                    </div>
-                    <div className="text-xs text-[--foreground] opacity-50 truncate">
-                      {user.email || 'No email'}
-                    </div>
-                    {user.similarity !== null && (
-                      <div className="text-xs mt-1">
-                        <div className="flex items-center">
-                          <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-600 ${
-                                user.similarity >= 0 
-                                  ? "bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
-                                  : "bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
-                              }`}
-                              style={{ 
-                                width: `${Math.abs(Math.round(user.similarity * 100))}%`,
-                                marginLeft: user.similarity < 0 ? 'auto' : '0'
-                              }}
-                            ></div>
-                          </div>
-                          <span className="ml-2 text-[--foreground] opacity-75 transition-all duration-600">
-                            {user.similarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.similarity * 100))}%
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                  <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
+                    <span className="text-[--foreground] opacity-50"> </span>
                   </div>
+                  <div className="flex-1">
+                    <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
+                    <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              // Show actual users + placeholders to fill up to 5 slots
+              [...users, ...Array(Math.max(0, 5 - users.length)).fill(null)].map((user, index) => (
+                <div
+                  key={user?.id || `placeholder-${index}`}
+                  onClick={() => user && handleUserClick(user.id)}
+                  className={`flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] ${
+                    user ? 'hover-scale cursor-pointer transition-all duration-600' : 'opacity-40'
+                  }`}
+                >
+                  {user ? (
+                    <>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium overflow-hidden">
+                        {user.image ? (
+                          <>
+                            <img
+                              src={user.image.replace('=s96-c', '=s192-c')}
+                              alt={user.name || 'User'}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                console.log('Image failed to load:', user.image);
+                                e.target.style.display = 'none';
+                                const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
+                                if (fallbackDiv) {
+                                  fallbackDiv.style.display = 'flex';
+                                }
+                              }}
+                              onLoad={(e) => {
+                                console.log('Image loaded successfully:', user.image);
+                                e.target.style.display = 'block';
+                                const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
+                                if (fallbackDiv) {
+                                  fallbackDiv.style.display = 'none';
+                                }
+                              }}
+                              style={{ display: 'block' }}
+                            />
+                            <div 
+                              className="fallback-initial w-full h-full items-center justify-center"
+                              style={{ 
+                                display: 'none',
+                                position: 'absolute',
+                                inset: 0,
+                                backgroundColor: 'transparent'
+                              }}
+                            >
+                              {user.name ? user.name[0].toUpperCase() : '?'}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="fallback-initial w-full h-full flex items-center justify-center">
+                            {user.name ? user.name[0].toUpperCase() : '?'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <div className="text-sm font-medium text-[--foreground] truncate">
+                          {user.name || 'Anonymous'}
+                        </div>
+                        <div className="text-xs text-[--foreground] opacity-50 truncate">
+                          {user.email || 'No email'}
+                        </div>
+                        {user.similarity !== null && (
+                          <div className="text-xs mt-1">
+                            <div className="flex items-center">
+                              <div className="flex-1 h-1 rounded-full bg-[--border-color] overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transform-gpu ${
+                                    user.similarity >= 0 
+                                      ? "bg-gradient-to-r from-[--accent-blue] to-[--accent-purple]"
+                                      : "bg-gradient-to-r from-[--accent-pink] to-[--accent-purple]"
+                                  }`}
+                                  style={{ 
+                                    width: `${Math.abs(Math.round(user.similarity * 100))}%`,
+                                    marginLeft: user.similarity < 0 ? 'auto' : '0',
+                                    transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    willChange: 'width, margin-left'
+                                  }}
+                                ></div>
+                              </div>
+                              <span 
+                                className="ml-2 text-[--foreground] opacity-75"
+                                style={{
+                                  transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                                }}
+                              >
+                                {user.similarity >= 0 ? '+' : '-'}{Math.abs(Math.round(user.similarity * 100))}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
+                        <span className="text-[--foreground] opacity-50"> </span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
+                        <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}

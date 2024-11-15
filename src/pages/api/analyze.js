@@ -17,25 +17,20 @@ export default async function handler(req, res) {
       .map(msg => `${msg.role.toUpperCase()}: ${msg.content}`)
       .join('\n');
 
-    const prompt = `Analyze the following conversation between a user and an AI assistant. 
-    Focus on identifying key personality traits, interests, communication style, and potential compatibility factors for social matching OF THE USER based on their responses to the AI. The AI messages are simply provided for context, do not analyse the AI.
-    Provide a concise analysis that could be used to match this person with others who have similar traits or complementary characteristics.
-
-    Conversation:
+    const prompt = `Analyze only the USER's messages in this conversation:
     ${conversationText}
 
-    Please provide your analysis in the following format:
-    - Personality Traits:
-    - Interests & Topics:
-    - Communication Style:
-    - Potential Compatibility Factors:`;
+    Respond only with three comma-separated lists:
+    1. Core traits shown: [direct personality traits, no explanations]
+    2. Topics & interests mentioned: [specific subjects discussed]
+    3. Match indicators: [traits for ideal social matching]`;
 
     // Get the analysis from GPT-4
     const completion = await openai.chat.completions.create({
       messages: [
         {
           role: "system",
-          content: "You are a skilled personality analyst and social matching expert. Your goal is to provide insightful analysis of conversations to help match people with similar or complementary traits."
+          content: "You are an analyzer that responds only with precise, comma-separated traits and characteristics. No explanations or full sentences."
         },
         {
           role: "user",
@@ -43,8 +38,8 @@ export default async function handler(req, res) {
         }
       ],
       model: "gpt-4-turbo-preview",
-      temperature: 0.7,
-      max_tokens: 500
+      temperature: 0.3,
+      max_tokens: 200
     });
 
     const analysis = completion.choices[0].message.content;
