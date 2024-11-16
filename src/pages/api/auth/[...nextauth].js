@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { doc, setDoc, getFirestore, update, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getFirestore, update, getDoc, collection, addDoc, getDocs } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { updateUserMainEmbedding } from "@/lib/firebase";
 
@@ -18,6 +18,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+const INITIAL_BOT_MESSAGE = {
+  role: "assistant",
+  content: "Hi there! 👋 I'm excited to get to know you better! Tell me about your interests, hobbies, and what you're passionate about. I'm here to chat and help connect you with people who share similar vibes. What's on your mind?",
+  timestamp: new Date().toISOString()
+};
+
 export default NextAuth({
   providers: [
     GoogleProvider({
@@ -33,20 +39,8 @@ export default NextAuth({
         const userRef = doc(db, "users", profile.sub);
         const userDoc = await getDoc(userRef);
         
-        if (userDoc.exists()) {
-          // If user exists, only update non-embedding fields
-          const updateData = {
-            name: user.name,
-            email: user.email,
-            image: user.image,
-            lastSignIn: new Date().toISOString(),
-            provider: account.provider,
-            googleId: profile.sub,
-          };
-          
-          await setDoc(userRef, updateData, { merge: true });
-        } else {
-          // Only for new users, initialize with null embeddings
+        if (!userDoc.exists()) {
+          // For new users, first create the user document
           await setDoc(userRef, {
             name: user.name,
             email: user.email,
@@ -59,6 +53,27 @@ export default NextAuth({
             normalizedEmbedding: null,
             lastEmbeddingUpdate: null
           });
+
+          // Then check if they have any messages
+          const messagesRef = collection(db, "users", profile.sub, "messages");
+          const messagesSnapshot = await getDocs(messagesRef);
+
+          // Only add initial message if they have no messages
+          if (messagesSnapshot.empty) {
+            await addDoc(messagesRef, INITIAL_BOT_MESSAGE);
+          }
+        } else {
+          // If user exists, only update non-embedding fields
+          const updateData = {
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            lastSignIn: new Date().toISOString(),
+            provider: account.provider,
+            googleId: profile.sub,
+          };
+          
+          await setDoc(userRef, updateData, { merge: true });
         }
         
         return true;

@@ -175,36 +175,7 @@ export default function Chat() {
         
         // Then load messages
         const loadedMessages = await loadMessagesFromFirebase(session.user.id);
-        
-        if (loadedMessages.length === 0) {
-          setIsChatLoading(true);
-          try {
-            const response = await fetch("/api/chat", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ messages: [] }),
-            });
-
-            const data = await response.json();
-            if (response.ok) {
-              const initialMessage = {
-                role: "assistant",
-                content: data.message,
-                timestamp: new Date().toISOString()
-              };
-              setMessages([initialMessage]);
-              await saveMessageToFirebase(session.user.id, initialMessage);
-            } else {
-              throw new Error(data.error || "Failed to get initial message");
-            }
-          } catch (error) {
-            console.error("Error fetching initial message:", error);
-          } finally {
-            setIsChatLoading(false);
-          }
-        } else {
-          setMessages(loadedMessages);
-        }
+        setMessages(loadedMessages);
       } catch (error) {
         console.error("Error initializing chat:", error);
       } finally {
@@ -403,18 +374,7 @@ export default function Chat() {
     if (!confirmed) return;
 
     try {
-      // Get user document first
-      const userRef = doc(db, "users", session.user.id);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        console.error("User document not found");
-        return;
-      }
-
-      const userData = userDoc.data();
-      
-      // Only proceed with chat clearing if we have user data
+      // Delete all existing messages
       const messagesQuery = query(
         collection(db, "users", session.user.id, "messages")
       );
@@ -428,23 +388,15 @@ export default function Chat() {
 
       await batch.commit();
 
-      // Get initial message
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [] }),
-      });
+      // Add new initial message
+      const initialMessage = {
+        role: "assistant",
+        content: "Hi there! 👋 I'm excited to get to know you better! Tell me about your interests, hobbies, and what you're passionate about. I'm here to chat and help connect you with people who share similar vibes. What's on your mind?",
+        timestamp: new Date().toISOString()
+      };
 
-      const data = await response.json();
-      if (response.ok) {
-        const initialMessage = {
-          role: "assistant",
-          content: data.message,
-          timestamp: new Date().toISOString()
-        };
-        setMessages([initialMessage]);
-        await saveMessageToFirebase(session.user.id, initialMessage);
-      }
+      setMessages([initialMessage]);
+      await saveMessageToFirebase(session.user.id, initialMessage);
     } catch (error) {
       console.error("Error clearing chat:", error);
     }

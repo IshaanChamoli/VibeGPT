@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, updateDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, updateDoc, doc, getDoc, setDoc, addDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -133,4 +133,27 @@ export function calculateCosineSimilarity(embedding1, embedding2) {
   }
 
   return dotProduct / (norm1 * norm2);
+}
+
+async function checkAndInitializeUser(userId) {
+  try {
+    const userRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      // Create new user without initial message
+      await setDoc(userRef, {
+        createdAt: new Date().toISOString(),
+        lastEmbeddingUpdate: new Date().toISOString()
+      });
+      return;
+    }
+
+    const userData = userDoc.data();
+    if (!userData.mainEmbedding) {
+      await updateUserMainEmbedding(userId);
+    }
+  } catch (error) {
+    console.error("Error checking/initializing user:", error);
+  }
 }
