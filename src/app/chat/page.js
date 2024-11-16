@@ -477,13 +477,20 @@ export default function Chat() {
         <div className="flex space-x-4">
           <button
             onClick={handleClearChat}
-            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover-scale"
+            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover:scale-105 active:scale-95"
           >
             Clear Chat
           </button>
           <button
+            onClick={() => router.push('/dashboard')}
+            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 
+              rounded-full transition duration-200 hover:scale-105 active:scale-95"
+          >
+            Dashboard
+          </button>
+          <button
             onClick={() => signOut({ redirect: true, callbackUrl: "/" })}
-            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover-scale"
+            className="px-4 py-2 text-sm text-[--foreground] bg-[--message-bg] hover:bg-[--message-bg]/80 rounded-full transition duration-200 hover:scale-105 active:scale-95"
           >
             Sign Out
           </button>
@@ -623,7 +630,7 @@ export default function Chat() {
                             <div className="flex justify-between text-xs">
                               <span className="text-[--foreground] opacity-75">Raw Embeddings</span>
                               <span className="text-[--foreground]">
-                                {user.mainSimilarity >= 0 ? '+' : '-'}{Math.abs(user.mainSimilarity * 100).toFixed(1)}%
+                                {user.mainSimilarity >= 0 ? '+' : '-'}{Math.abs(user.mainSimilarity * 100).toFixed(3)}%
                               </span>
                             </div>
                             <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
@@ -641,7 +648,7 @@ export default function Chat() {
                             <div className="flex justify-between text-xs">
                               <span className="text-[--foreground] opacity-75">Norm Embeddings</span>
                               <span className="text-[--foreground]">
-                                {user.normalizedSimilarity >= 0 ? '+' : '-'}{Math.abs(user.normalizedSimilarity * 100).toFixed(1)}%
+                                {user.normalizedSimilarity >= 0 ? '+' : '-'}{Math.abs(user.normalizedSimilarity * 100).toFixed(3)}%
                               </span>
                             </div>
                             <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
@@ -658,7 +665,7 @@ export default function Chat() {
                           <div className="space-y-1">
                             <div className="flex justify-between text-xs">
                               <span className="text-[--foreground] opacity-75">Scaled</span>
-                              <span className="text-[--foreground]">{(user.scaledSimilarity * 100).toFixed(1)}%</span>
+                              <span className="text-[--foreground]">{(user.scaledSimilarity * 100).toFixed(3)}%</span>
                             </div>
                             <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
                               <div
@@ -673,7 +680,7 @@ export default function Chat() {
                           <div className="space-y-1">
                             <div className="flex justify-between text-xs">
                               <span className="text-[--foreground] opacity-75">Sigmoid Amplified</span>
-                              <span className="text-[--foreground]">{(user.amplifiedSimilarity * 100).toFixed(1)}%</span>
+                              <span className="text-[--foreground]">{(user.amplifiedSimilarity * 100).toFixed(3)}%</span>
                             </div>
                             <div className="h-1 rounded-full bg-[--border-color] overflow-hidden">
                               <div
