@@ -2,10 +2,11 @@
 
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { collection, addDoc, query, orderBy, limit, getDocs, deleteDoc, where, writeBatch, getDoc, doc, setDoc, onSnapshot } from "firebase/firestore";
 import { db, updateUserMainEmbedding, calculateCosineSimilarity } from "@/lib/firebase"; // Ensure this import is correct
 import LoadingScreen from '@/components/LoadingScreen';
+import Image from 'next/image';
 
 const sigmoidAmplify = (similarity) => {
   if (similarity === null) return null;
@@ -208,7 +209,8 @@ export default function Chat() {
     initializeChat();
   }, [session]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     if (!session || hasLoadedUsers) return;
     
     try {
@@ -288,23 +290,11 @@ export default function Chat() {
     } catch (error) {
       console.error("Error loading users:", error);
     }
-  };
+  }, [session, hasLoadedUsers]);
 
   useEffect(() => {
-    let unsubscribe;
-    
-    if (session && !hasLoadedUsers) {
-      loadUsers().then(unsubscribeFn => {
-        unsubscribe = unsubscribeFn;
-      });
-    }
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [session, hasLoadedUsers]);
+    loadUsers();
+  }, [loadUsers]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -517,29 +507,11 @@ export default function Chat() {
                           <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] flex items-center justify-center text-white font-medium overflow-hidden">
                             {user.image ? (
                               <>
-                                <img
+                                <Image 
                                   src={user.image.replace('=s96-c', '=s192-c')}
                                   alt={user.name || 'User'}
-                                  className="w-full h-full object-cover"
-                                  loading="lazy"
-                                  referrerPolicy="no-referrer"
-                                  onError={(e) => {
-                                    console.log('Image failed to load:', user.image);
-                                    e.target.style.display = 'none';
-                                    const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
-                                    if (fallbackDiv) {
-                                      fallbackDiv.style.display = 'flex';
-                                    }
-                                  }}
-                                  onLoad={(e) => {
-                                    console.log('Image loaded successfully:', user.image);
-                                    e.target.style.display = 'block';
-                                    const fallbackDiv = e.target.parentElement.querySelector('.fallback-initial');
-                                    if (fallbackDiv) {
-                                      fallbackDiv.style.display = 'none';
-                                    }
-                                  }}
-                                  style={{ display: 'block' }}
+                                  width={384}
+                                  height={384}
                                 />
                                 <div 
                                   className="fallback-initial w-full h-full items-center justify-center"

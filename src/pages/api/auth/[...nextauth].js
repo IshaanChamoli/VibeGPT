@@ -24,7 +24,7 @@ const INITIAL_BOT_MESSAGE = {
   timestamp: new Date().toISOString()
 };
 
-export default NextAuth({
+export const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -99,4 +99,6 @@ export default NextAuth({
     }
   },
   debug: true, // Enable debug messages
-}); 
+};
+
+export default NextAuth(authOptions); 

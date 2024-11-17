@@ -57,7 +57,7 @@ export default function Welcome() {
             Welcome, {firstName}! 👋
           </h1>
           <p className="text-xl text-[#8E8EA0]">
-            Let's get to know each other
+            Let&apos;s get to know each other
           </p>
         </div>
 

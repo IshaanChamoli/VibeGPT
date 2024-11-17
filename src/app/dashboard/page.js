@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs, query, writeBatch, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import LoadingScreen from '@/components/LoadingScreen';
+import Image from 'next/image';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -77,10 +78,12 @@ export default function Dashboard() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
             <div className="flex items-center space-x-4">
               <div className="relative">
-                <img
+                <Image 
                   src={session.user.image}
                   alt="Profile"
                   className="w-16 h-16 rounded-full ring-4 ring-[--accent-purple]/30 shadow-xl transform transition-all duration-300 hover:scale-105"
+                  width={64}
+                  height={64}
                 />
                 <div className="absolute -bottom-2 -right-2 w-5 h-5 bg-green-500 rounded-full border-4 border-[--message-bg]"></div>
               </div>
