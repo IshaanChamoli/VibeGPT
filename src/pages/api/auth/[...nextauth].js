@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { doc, setDoc, getFirestore, update, getDoc, collection, addDoc, getDocs } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
-import { updateUserMainEmbedding } from "@/lib/firebase";
+import { updateUserMainEmbedding, incrementTotalUsers } from "@/lib/firebase";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -40,7 +40,10 @@ export default NextAuth({
         const userDoc = await getDoc(userRef);
         
         if (!userDoc.exists()) {
-          // For new users, first create the user document
+          // For new users, increment total users count
+          await incrementTotalUsers();
+          
+          // Create new user document
           await setDoc(userRef, {
             name: user.name,
             email: user.email,
@@ -53,7 +56,7 @@ export default NextAuth({
             normalizedEmbedding: null,
             lastEmbeddingUpdate: null
           });
-
+          
           // Then check if they have any messages
           const messagesRef = collection(db, "users", profile.sub, "messages");
           const messagesSnapshot = await getDocs(messagesRef);

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, updateDoc, doc, getDoc, setDoc, addDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, updateDoc, doc, getDoc, setDoc, addDoc, runTransaction } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,96 +14,83 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-export async function calculateAverageEmbedding(embeddings) {
+export async function calculateAverageEmbedding(embeddings, timestamps) {
   if (!embeddings || embeddings.length === 0) return null;
   
-  const embeddingLength = embeddings[0].length;
-  const sumArray = new Array(embeddingLength).fill(0);
+  const { recencyImportance } = await getPlatformStats();
   
-  embeddings.forEach(embedding => {
-    embedding.forEach((value, index) => {
-      sumArray[index] += value;
+  const sortedPairs = embeddings.map((embedding, index) => ({
+    embedding,
+    timestamp: timestamps[index]
+  })).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  
+  const embeddingLength = sortedPairs[0].embedding.length;
+  const weightedSum = new Array(embeddingLength).fill(0);
+  let totalWeight = 0;
+  
+  sortedPairs.forEach(({ embedding }, index) => {
+    const weight = Math.exp(-recencyImportance * index * 0.2);
+    totalWeight += weight;
+    
+    embedding.forEach((value, dim) => {
+      weightedSum[dim] += value * weight;
     });
   });
   
-  return sumArray.map(sum => sum / embeddings.length);
+  return weightedSum.map(sum => sum / totalWeight);
 }
 
 export function normalizeEmbedding(embedding) {
   if (!embedding) return null;
   
-  // Calculate the square root of the sum of squares (L2 norm)
   const squareSum = embedding.reduce((sum, val) => sum + val * val, 0);
   const norm = Math.sqrt(squareSum);
   
-  // Avoid division by zero
   if (norm === 0) return null;
   
-  // Normalize each component
   return embedding.map(val => val / norm);
 }
 
 export async function updateUserMainEmbedding(userId) {
   try {
-    // First check if user already has a mainEmbedding
     const userRef = doc(db, "users", userId);
     const userDoc = await getDoc(userRef);
     
     if (!userDoc.exists()) return;
     
     const userData = userDoc.data();
-    // If mainEmbedding exists, ensure we have new embeddings before updating
-    if (userData.mainEmbedding) {
-      const embeddingsRef = collection(db, "users", userId, "embeddings");
-      const embeddingsSnapshot = await getDocs(embeddingsRef);
-      
-      if (embeddingsSnapshot.empty) {
-        console.warn("No embeddings found, preserving existing mainEmbedding");
-        return userData.mainEmbedding;
-      }
-      
-      const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
-      const averageEmbedding = await calculateAverageEmbedding(embeddings);
-      
-      if (!averageEmbedding) {
-        console.warn("Failed to calculate new embedding, preserving existing mainEmbedding");
-        return userData.mainEmbedding;
-      }
-      
-      // Calculate normalized embedding
-      const normalizedEmbedding = normalizeEmbedding(averageEmbedding);
-      
-      await updateDoc(userRef, {
-        mainEmbedding: averageEmbedding,
-        normalizedEmbedding: normalizedEmbedding,
-        lastEmbeddingUpdate: new Date().toISOString()
-      });
-      
-      return averageEmbedding;
-    } else {
-      // For first-time initialization
-      const embeddingsRef = collection(db, "users", userId, "embeddings");
-      const embeddingsSnapshot = await getDocs(embeddingsRef);
-      
-      if (embeddingsSnapshot.empty) {
-        console.log("No embeddings yet for new user");
-        return null;
-      }
-      
-      const embeddings = embeddingsSnapshot.docs.map(doc => doc.data().embedding);
-      const averageEmbedding = await calculateAverageEmbedding(embeddings);
-      
-      // Calculate normalized embedding
-      const normalizedEmbedding = normalizeEmbedding(averageEmbedding);
-      
-      await updateDoc(userRef, {
-        mainEmbedding: averageEmbedding || null,
-        normalizedEmbedding: normalizedEmbedding || null,
-        lastEmbeddingUpdate: new Date().toISOString()
-      });
-      
-      return averageEmbedding;
+    const embeddingsRef = collection(db, "users", userId, "embeddings");
+    const embeddingsSnapshot = await getDocs(embeddingsRef);
+    
+    if (embeddingsSnapshot.empty) {
+      console.warn("No embeddings found");
+      return userData.mainEmbedding;
     }
+    
+    const embeddings = [];
+    const timestamps = [];
+    embeddingsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      embeddings.push(data.embedding);
+      timestamps.push(data.timestamp);
+    });
+    
+    const averageEmbedding = await calculateAverageEmbedding(embeddings, timestamps);
+    
+    if (!averageEmbedding) {
+      console.warn("Failed to calculate new embedding");
+      return userData.mainEmbedding;
+    }
+    
+    const normalizedEmbedding = normalizeEmbedding(averageEmbedding);
+    
+    await updateDoc(userRef, {
+      mainEmbedding: averageEmbedding,
+      normalizedEmbedding: normalizedEmbedding,
+      lastEmbeddingUpdate: new Date().toISOString()
+    });
+    
+    return averageEmbedding;
   } catch (error) {
     console.error("Error updating main embedding:", error);
     throw error;
@@ -141,7 +128,6 @@ async function checkAndInitializeUser(userId) {
     const userDoc = await getDoc(userRef);
     
     if (!userDoc.exists()) {
-      // Create new user without initial message
       await setDoc(userRef, {
         createdAt: new Date().toISOString(),
         lastEmbeddingUpdate: new Date().toISOString()
@@ -157,3 +143,157 @@ async function checkAndInitializeUser(userId) {
     console.error("Error checking/initializing user:", error);
   }
 }
+
+async function initializePlatformStats() {
+  try {
+    const statsRef = doc(db, "stats", "platform_stats");
+    const statsDoc = await getDoc(statsRef);
+    
+    if (!statsDoc.exists()) {
+      await setDoc(statsRef, {
+        totalUsers: 0,
+        recencyImportance: 1,
+        lastUpdated: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error("Error initializing platform stats:", error);
+  }
+}
+
+async function incrementTotalUsers() {
+  try {
+    const statsRef = doc(db, "stats", "platform_stats");
+    
+    await runTransaction(db, async (transaction) => {
+      const statsDoc = await transaction.get(statsRef);
+      const currentStats = statsDoc.exists() ? statsDoc.data() : { totalUsers: 0 };
+      const newTotalUsers = (currentStats.totalUsers || 0) + 1;
+      
+      const newRecencyImportance = Math.exp(-0.05 * Math.pow(Math.log10(newTotalUsers), 3.3));
+      
+      transaction.set(statsRef, {
+        totalUsers: newTotalUsers,
+        recencyImportance: newRecencyImportance,
+        lastUpdated: new Date().toISOString()
+      });
+    });
+  } catch (error) {
+    console.error("Error incrementing total users:", error);
+  }
+}
+
+async function getPlatformStats() {
+  try {
+    const statsRef = doc(db, "stats", "platform_stats");
+    const statsDoc = await getDoc(statsRef);
+    
+    if (statsDoc.exists()) {
+      return statsDoc.data();
+    }
+    
+    return {
+      totalUsers: 0,
+      recencyImportance: 1,
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Error getting platform stats:", error);
+    return {
+      totalUsers: 0,
+      recencyImportance: 1,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+}
+
+export {
+  initializePlatformStats,
+  incrementTotalUsers,
+  getPlatformStats
+};
+
+
+
+
+
+
+/* USED FOR DYNAMIC WEIGHTED AVERAGE
+TASK: Implement a dynamic weighted average system for user embeddings that automatically adjusts based on platform size.
+
+1. PLATFORM STATS TRACKING
+- Create a 'stats' collection in Firebase with document ID 'platform_stats'
+- Track:
+  * totalUsers (number)
+  * recencyImportance (number)
+  * lastUpdated (timestamp)
+- Initialize with:
+  * totalUsers: 0
+  * recencyImportance: 1 (maximum importance for new platform)
+
+2. RECENCY IMPORTANCE CALCULATION
+- Formula: recencyImportance = 1 / (1 + Math.log10(totalUserCount + 1))
+- This gives us:
+  * 10 users → ~0.95
+  * 100 users → ~0.60
+  * 1000 users → ~0.15
+  * 10000 users → ~0.02
+
+3. WEIGHT CALCULATION FOR EMBEDDINGS
+- Sort embeddings by timestamp (newest first)
+- For each embedding at index i:
+  weight = 1 / (1 + (index * recencyImportance * 1.35))
+- This gives approximately:
+  * Newest embedding: 1.000 (100%)
+  * Second embedding: 0.750 (75%) [with max recencyImportance]
+  * Subsequent embeddings decay more gradually
+- As platform grows, weights become more equal
+
+4. REQUIRED FUNCTIONS
+a) initializePlatformStats()
+   - Check if stats document exists
+   - If not, create with initial values
+
+b) incrementTotalUsers()
+   - Increment totalUsers
+   - Recalculate and update recencyImportance
+   - Update lastUpdated
+
+c) getPlatformStats()
+   - Retrieve current stats
+   - Return default values if not found
+
+d) calculateAverageEmbedding(embeddings, timestamps)
+   - Get recencyImportance from platform stats
+   - Sort embeddings by timestamp
+   - Apply weight formula
+   - Return weighted average
+
+e) updateUserMainEmbedding(userId)
+   - Get user's embeddings with timestamps
+   - Calculate weighted average
+   - Update user's mainEmbedding and normalizedEmbedding
+
+5. INTEGRATION POINTS
+- Call incrementTotalUsers() when new user signs up
+- Call initializePlatformStats() at app startup
+- Ensure all embedding storage includes timestamps
+
+6. DATA STRUCTURE
+embeddings collection document:
+{
+  embedding: number[],
+  timestamp: string (ISO date),
+  analysisId: string,
+  analysisPath: string
+}
+
+stats document:
+{
+  totalUsers: number,
+  recencyImportance: number,
+  lastUpdated: string (ISO date)
+}
+
+Please implement these functions in src/lib/firebase.js while maintaining existing functionality for normalizedEmbedding and other features.
+*/
