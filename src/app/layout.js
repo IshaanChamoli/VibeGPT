@@ -4,6 +4,7 @@ import { SessionProvider } from "next-auth/react";
 import localFont from "next/font/local";
 import "./globals.css";
 import { initializePlatformStats } from "@/lib/firebase";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -28,6 +29,7 @@ export default function RootLayout({ children }) {
         <SessionProvider>
           {children}
         </SessionProvider>
+        <Analytics />
       </body>
     </html>
   );
