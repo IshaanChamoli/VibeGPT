@@ -218,7 +218,7 @@ export {
 
 
 
-/* USED FOR DYNAMIC WEIGHTED AVERAGE
+/* USED FOR DYNAMIC WEIGHTED AVERAGE based on platform size
 TASK: Implement a dynamic weighted average system for user embeddings that automatically adjusts based on platform size.
 
 1. PLATFORM STATS TRACKING
