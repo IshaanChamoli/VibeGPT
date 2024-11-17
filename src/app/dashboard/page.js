@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, writeBatch } from "firebase/firestore";
+import { collection, getDocs, query, writeBatch, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import LoadingScreen from '@/components/LoadingScreen';
 
@@ -26,6 +26,11 @@ export default function Dashboard() {
   const handleClearChat = async () => {
     if (!session || isClearing) return;
 
+    // Add confirmation dialog
+    if (!window.confirm("Are you sure you want to clear your chat history?")) {
+      return;
+    }
+
     try {
       setIsClearing(true);
       
@@ -44,6 +49,15 @@ export default function Dashboard() {
       await batch.commit();
       console.log("Chat cleared from Firebase");
       
+      // Add initial message - updated to match chat page
+      const initialMessage = {
+        role: "assistant",
+        content: "Hi there! 👋 I'm excited to get to know you better! Tell me about your interests, hobbies, and what you're passionate about. I'm here to chat and help connect you with people who share similar vibes. What's on your mind?",
+        timestamp: new Date().toISOString()
+      };
+      
+      await addDoc(collection(db, "users", session.user.id, "messages"), initialMessage);
+      
       // Redirect to chat page after clearing
       router.push("/chat");
     } catch (error) {
@@ -59,29 +73,6 @@ export default function Dashboard() {
     <div className="h-screen bg-gradient-to-b from-[--chat-background] to-[--message-bg] p-6">
       <div className="max-w-5xl mx-auto h-full">
         <div className="bg-[--message-bg]/80 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-white/10 h-full flex flex-col relative">
-          {/* Back to Chat Button */}
-          <button
-            onClick={() => router.push('/chat')}
-            className="absolute top-4 left-4 p-2 rounded-xl bg-[--message-bg] hover:bg-[--message-bg]/80 
-              transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg 
-              border border-white/10 text-[--foreground]/80 hover:text-[--foreground]"
-            aria-label="Back to Chat"
-          >
-            <svg 
-              className="w-6 h-6" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M10 19l-7-7m0 0l7-7m-7 7h18" 
-              />
-            </svg>
-          </button>
-
           {/* Header Section - reduced vertical spacing */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
             <div className="flex items-center space-x-4">

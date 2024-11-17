@@ -123,6 +123,28 @@ async function loadMessagesFromFirebase(userId) {
   return querySnapshot.docs.map(doc => doc.data()).reverse();
 }
 
+// Add this placeholder component at the top of the file
+const UserPlaceholder = () => (
+  <>
+    <div className="flex items-center space-x-3">
+      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400/10 to-blue-500/20 flex-shrink-0"></div>
+      <div className="flex flex-col flex-1 min-w-0">
+        <div className="h-3.5 w-24 bg-gradient-to-r from-blue-400/20 to-blue-500/10 rounded-md mb-2"></div>
+        <div className="h-2.5 w-32 bg-gradient-to-r from-blue-400/10 to-blue-500/5 rounded-md"></div>
+      </div>
+    </div>
+    
+    <div className="mt-3">
+      <div className="flex items-center">
+        <div className="flex-1 h-1.5 rounded-full bg-gradient-to-r from-blue-400/5 to-blue-500/5">
+          <div className="h-full w-0 rounded-full bg-gradient-to-r from-blue-400/10 to-blue-500/10"></div>
+        </div>
+        <div className="ml-2 h-2.5 w-8 bg-gradient-to-r from-blue-400/10 to-blue-500/5 rounded-md"></div>
+      </div>
+    </div>
+  </>
+);
+
 export default function Chat() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -423,7 +445,7 @@ export default function Chat() {
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 rounded-full bg-[--accent-green] animate-pulse"></div>
           <span className="text-lg font-medium bg-gradient-to-r from-[--accent-blue] to-[--accent-purple] text-transparent bg-clip-text">
-            Hi, {session.user.email}
+            {session.user.name ? `Hi, ${session.user.name.split(' ')[0]}` : 'Welcome to VibeGPT'}
           </span>
         </div>
         <div className="flex space-x-4">
@@ -471,15 +493,9 @@ export default function Chat() {
               Array(5).fill(null).map((_, index) => (
                 <div
                   key={index}
-                  className="flex items-center space-x-3 p-3 rounded-xl bg-[--message-bg] border border-[--border-color] opacity-40"
+                  className="flex flex-col p-3 rounded-xl bg-[--message-bg] border border-[--border-color] opacity-40"
                 >
-                  <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
-                    <span className="text-[--foreground] opacity-50"> </span>
-                  </div>
-                  <div className="flex-1">
-                    <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
-                    <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
-                  </div>
+                  <UserPlaceholder />
                 </div>
               ))
             ) : (
@@ -646,15 +662,7 @@ export default function Chat() {
                         </div>
                       </>
                     ) : (
-                      <>
-                        <div className="w-8 h-8 rounded-full bg-[--border-color] flex items-center justify-center">
-                          <span className="text-[--foreground] opacity-50"> </span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="h-4 w-24 bg-[--border-color] rounded mb-1"></div>
-                          <div className="h-3 w-32 bg-[--border-color] rounded opacity-50"></div>
-                        </div>
-                      </>
+                      <UserPlaceholder />
                     )}
                   </div>
                 </div>
