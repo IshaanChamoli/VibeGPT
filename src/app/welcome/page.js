@@ -7,6 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db, updateUserMainEmbedding } from "@/lib/firebase";
 import LoadingScreen from '@/components/LoadingScreen';
 
+
 async function checkAndInitializeUser(userId) {
   try {
     const userRef = doc(db, "users", userId);

@@ -4,6 +4,11 @@ import { authOptions } from "@/pages/api/auth/[...nextauth]"
 import { redirect } from "next/navigation"
 import { SignInButton } from '@/components/auth/SignInButton'
 
+export const metadata = {
+  title: 'VibeGPT',
+  description: 'Chat with AI, Connect with Humans',
+}
+
 export default async function Home() {
   const session = await getServerSession(authOptions)
   
